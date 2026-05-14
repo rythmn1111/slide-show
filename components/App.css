@@ -44,6 +44,17 @@
 }
 .pick-btn:hover { opacity: 0.85; }
 
+.loading-msg {
+  font-size: 0.85rem;
+  color: #666;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
 .remote-hint {
   font-size: 0.75rem;
   color: #444;

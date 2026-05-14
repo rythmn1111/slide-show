@@ -14,12 +14,24 @@ function pickTransition(): Transition {
 }
 
 const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'svg'])
+const HEIC_EXTS = new Set(['heic', 'heif'])
 const VIDEO_EXTS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv', 'm4v'])
 function getMediaType(name: string): 'image' | 'video' | null {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  if (IMAGE_EXTS.has(ext)) return 'image'
+  if (IMAGE_EXTS.has(ext) || HEIC_EXTS.has(ext)) return 'image'
   if (VIDEO_EXTS.has(ext)) return 'video'
   return null
+}
+
+async function toObjectUrl(file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  if (HEIC_EXTS.has(ext)) {
+    // Dynamic import keeps heic2any out of the main bundle until needed
+    const { default: heic2any } = await import('heic2any')
+    const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+    return URL.createObjectURL(Array.isArray(blob) ? blob[0]! : blob)
+  }
+  return URL.createObjectURL(file)
 }
 
 // Minimal FS types (avoids missing DOM lib declarations)
@@ -46,7 +58,7 @@ async function collectMediaFiles(dir: DirH, objectUrls: string[]): Promise<Media
       if (!type) continue
       try {
         const file = await (entry as FileH).getFile()
-        const url = URL.createObjectURL(file)
+        const url = await toObjectUrl(file)
         objectUrls.push(url)
         localFiles.push({ name: entry.name, url, type })
       } catch { /* skip locked/unreadable files */ }
@@ -81,6 +93,7 @@ export default function App() {
   const [volume, setVolume] = useState(1)
   const [transition, setTransition] = useState<Transition>('fade')
   const [remoteUrl, setRemoteUrl] = useState('/remote')
+  const [loadingMsg, setLoadingMsg] = useState('')
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -215,12 +228,15 @@ export default function App() {
       const dir = await (window as unknown as { showDirectoryPicker(): Promise<DirH> }).showDirectoryPicker()
       objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
       objectUrlsRef.current = []
+      setAllFiles([])
+      setLoadingMsg('Loading…')
       const mediaFiles = await collectMediaFiles(dir, objectUrlsRef.current)
+      setLoadingMsg('')
       setAllFiles(mediaFiles)
       setIndex(0)
       setPlaying(false)
       setTransition('fade')
-    } catch { /* cancelled */ }
+    } catch { setLoadingMsg('') /* cancelled */ }
   }
 
   if (allFiles.length === 0) {
@@ -231,9 +247,10 @@ export default function App() {
           <h1>Slideshow</h1>
           <p>Select a folder with photos and videos</p>
           <button className="pick-btn" onClick={pickFolder}>Choose Folder</button>
-          <p className="remote-hint">
-            Open remote in another tab: <code>{remoteUrl}</code>
-          </p>
+          {loadingMsg
+            ? <p className="loading-msg">{loadingMsg}</p>
+            : <p className="remote-hint">Open remote in another tab: <code>{remoteUrl}</code></p>
+          }
         </div>
       </div>
     )

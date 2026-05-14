@@ -224,7 +224,6 @@ export default function App() {
         {!playing && (
           <div className="pause-overlay"><span>▶</span></div>
         )}
-        <div className="filename">{current?.name}</div>
         <div className="counter">{files.length > 0 ? `${index + 1} / ${files.length}` : '0 / 0'}</div>
       </div>
 

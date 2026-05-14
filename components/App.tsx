@@ -23,42 +23,51 @@ function getMediaType(name: string): 'image' | 'video' | null {
 }
 
 // Minimal FS types (avoids missing DOM lib declarations)
-type FSHandle = { kind: 'file' | 'directory'; name: string }
-type FSFileHandle = FSHandle & { kind: 'file'; getFile(): Promise<File> }
-type FSDirHandle = FSHandle & { kind: 'directory'; values(): AsyncIterableIterator<FSHandle> }
+type AnyHandle = { kind: 'file' | 'directory'; name: string }
+type FileH = AnyHandle & { kind: 'file'; getFile(): Promise<File> }
+type DirH = AnyHandle & {
+  kind: 'directory'
+  values(): AsyncIterableIterator<AnyHandle>
+  getDirectoryHandle(name: string): Promise<DirH>
+}
 
-// Walk a directory recursively:
-// - If it contains subfolders, collect files from each subfolder in numeric order
-// - If no subfolders, collect files directly (sorted numerically by name)
-// Root-level files (if any) are included before subfolder files.
-async function collectMediaFiles(dir: FSDirHandle, objectUrls: string[]): Promise<MediaFile[]> {
-  const subdirs: FSDirHandle[] = []
+// Walk a directory recursively, collecting media in numerically-sorted subfolder order.
+// Uses getDirectoryHandle() to explicitly open each subfolder — more reliable than
+// reusing the handle returned by the parent's values() iterator.
+async function collectMediaFiles(dir: DirH, objectUrls: string[]): Promise<MediaFile[]> {
+  const subdirNames: string[] = []
   const localFiles: MediaFile[] = []
 
   for await (const entry of dir.values()) {
     if (entry.kind === 'directory') {
-      subdirs.push(entry as FSDirHandle)
+      subdirNames.push(entry.name)
     } else {
       const type = getMediaType(entry.name)
       if (!type) continue
-      const file = await (entry as FSFileHandle).getFile()
-      const url = URL.createObjectURL(file)
-      objectUrls.push(url)
-      localFiles.push({ name: entry.name, url, type })
+      try {
+        const file = await (entry as FileH).getFile()
+        const url = URL.createObjectURL(file)
+        objectUrls.push(url)
+        localFiles.push({ name: entry.name, url, type })
+      } catch { /* skip locked/unreadable files */ }
     }
   }
 
   localFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 
-  if (subdirs.length === 0) return localFiles
+  if (subdirNames.length === 0) return localFiles
 
-  // Sort subfolders numerically (1, 2, 10 not 1, 10, 2)
-  subdirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  // Sort subfolder names numerically so 1, 2, 10 not 1, 10, 2
+  subdirNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 
   const result: MediaFile[] = [...localFiles]
-  for (const sub of subdirs) {
-    const subFiles = await collectMediaFiles(sub, objectUrls)
-    result.push(...subFiles)
+  for (const name of subdirNames) {
+    try {
+      // Explicitly open the subdirectory by name instead of reusing the iterated handle
+      const subDir = await dir.getDirectoryHandle(name)
+      const subFiles = await collectMediaFiles(subDir, objectUrls)
+      result.push(...subFiles)
+    } catch { /* skip unreadable subdirs */ }
   }
   return result
 }
@@ -203,7 +212,7 @@ export default function App() {
 
   async function pickFolder() {
     try {
-      const dir = await (window as unknown as { showDirectoryPicker(): Promise<FSDirHandle> }).showDirectoryPicker()
+      const dir = await (window as unknown as { showDirectoryPicker(): Promise<DirH> }).showDirectoryPicker()
       objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
       objectUrlsRef.current = []
       const mediaFiles = await collectMediaFiles(dir, objectUrlsRef.current)

@@ -1,0 +1,275 @@
+.empty-state {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.empty-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.empty-icon {
+  font-size: 64px;
+  opacity: 0.3;
+}
+
+.empty-content h1 {
+  font-size: 2rem;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+}
+
+.empty-content p {
+  color: #888;
+  font-size: 1rem;
+}
+
+.pick-btn {
+  margin-top: 8px;
+  padding: 12px 32px;
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.pick-btn:hover { opacity: 0.85; }
+
+.remote-hint {
+  font-size: 0.75rem;
+  color: #444;
+  margin-top: 4px;
+}
+
+.remote-hint code {
+  color: #666;
+  font-family: monospace;
+}
+
+/* Main App */
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Media Area */
+.media-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* Base state: invisible until animation plays */
+.media-item {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Transition keyframes ─────────────────────── */
+
+@keyframes t-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes t-slide-left {
+  from { opacity: 0; transform: translateX(80px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes t-slide-right {
+  from { opacity: 0; transform: translateX(-80px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes t-zoom-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes t-zoom-out {
+  from { opacity: 0; transform: scale(1.2); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes t-blur-fade {
+  from { opacity: 0; filter: blur(22px); }
+  to   { opacity: 1; filter: blur(0px); }
+}
+
+@keyframes t-flip {
+  from { opacity: 0; transform: perspective(600px) rotateY(-25deg) scale(0.96); }
+  to   { opacity: 1; transform: perspective(600px) rotateY(0deg) scale(1); }
+}
+
+/* ── Transition classes (applied on mount via key change) ── */
+
+.media-item.t-fade       { animation: t-fade       0.40s ease           forwards; }
+.media-item.t-slide-left  { animation: t-slide-left  0.36s ease           forwards; }
+.media-item.t-slide-right { animation: t-slide-right 0.36s ease           forwards; }
+.media-item.t-zoom-in    { animation: t-zoom-in     0.42s ease           forwards; }
+.media-item.t-zoom-out   { animation: t-zoom-out    0.42s ease           forwards; }
+.media-item.t-blur-fade  { animation: t-blur-fade   0.50s ease           forwards; }
+.media-item.t-flip       { animation: t-flip        0.45s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+
+/* ── Overlays ─────────────────────── */
+
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pause-overlay span {
+  font-size: 72px;
+  opacity: 0.15;
+}
+
+.filename {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+  pointer-events: none;
+}
+
+.counter {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.3);
+  pointer-events: none;
+}
+
+/* Controls Bar */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #111;
+  border-top: 1px solid #1e1e1e;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.ctrl-btn {
+  background: #1e1e1e;
+  border: 1px solid #2e2e2e;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 13px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+
+.ctrl-btn:hover { background: #2a2a2a; }
+
+.ctrl-btn.active {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+.filter-group {
+  display: flex;
+  gap: 4px;
+}
+
+.filter-btn {
+  font-size: 0.8rem;
+  padding: 5px 11px;
+}
+
+.nav-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nav-arrow {
+  font-size: 1.4rem;
+  padding: 2px 11px 4px;
+  line-height: 1;
+}
+
+.play-btn {
+  min-width: 42px;
+  font-size: 1rem;
+  padding: 6px 14px;
+}
+
+.folder-btn { font-size: 0.82rem; }
+
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.slider-group label {
+  font-size: 0.72rem;
+  color: #666;
+  white-space: nowrap;
+}
+
+.slider-group input[type="range"] {
+  width: 90px;
+  accent-color: #fff;
+  cursor: pointer;
+}
+
+.slider-val {
+  font-size: 0.78rem;
+  color: #999;
+  min-width: 34px;
+}
+
+.folder-info {
+  font-size: 0.72rem;
+  color: #444;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.transition-badge {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #333;
+  white-space: nowrap;
+  font-style: italic;
+}

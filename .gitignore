@@ -1,9 +1,7 @@
 # Next.js
 .next/
 
-# PWA generated files
-public/sw.js
-public/sw.js.map
+# PWA plugin generated files (no longer used)
 public/workbox-*.js
 public/workbox-*.js.map
 public/swe-worker-*.js

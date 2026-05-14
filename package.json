@@ -9,7 +9,6 @@
     "lint": "bun run next lint"
   },
   "dependencies": {
-    "@ducanh2912/next-pwa": "^10.2.9",
     "next": "^15.3.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

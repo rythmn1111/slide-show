@@ -1,0 +1,198 @@
+.converter {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.conv-card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 16px;
+  padding: 40px 44px;
+  max-width: 580px;
+  width: 100%;
+}
+
+.conv-card h1 {
+  font-size: 1.6rem;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+}
+
+.conv-sub {
+  color: #666;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0 0 32px;
+}
+
+/* ── Buttons ── */
+
+.conv-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-top: 16px;
+}
+.conv-btn:hover { opacity: 0.85; }
+.conv-btn:first-child { margin-top: 0; }
+
+.conv-btn-ghost {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  background: transparent;
+  color: #777;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  margin-top: 10px;
+}
+.conv-btn-ghost:hover { border-color: #444; color: #bbb; }
+
+/* ── Status / scanning ── */
+
+.conv-spinner {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 8px 0 24px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 1; }
+}
+
+/* ── File list (confirming phase) ── */
+
+.conv-found {
+  font-size: 0.95rem;
+  color: #bbb;
+  margin: 0 0 14px;
+}
+.conv-found strong { color: #fff; font-weight: 600; }
+
+.conv-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+}
+.conv-list li {
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  color: #555;
+  font-family: monospace;
+  border-bottom: 1px solid #181818;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-list li:last-child { border-bottom: none; }
+.conv-more { color: #383838 !important; font-style: italic; }
+
+.conv-warn {
+  font-size: 0.82rem;
+  color: #b88a50;
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  background: rgba(180,120,0,0.07);
+  border: 1px solid rgba(180,120,0,0.15);
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+/* ── Progress bar (converting phase) ── */
+
+.conv-progress-label {
+  font-size: 0.88rem;
+  color: #888;
+  margin: 0 0 10px;
+}
+.conv-progress-label span { color: #ccc; }
+
+.conv-bar-track {
+  width: 100%;
+  height: 3px;
+  background: #1e1e1e;
+  border-radius: 2px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.conv-bar-fill {
+  height: 100%;
+  background: #fff;
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+.conv-recent {
+  min-height: 56px;
+}
+.conv-log-line {
+  font-size: 0.75rem;
+  font-family: monospace;
+  margin: 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+.conv-log-line.ok   { color: #5bba8a; }
+.conv-log-line.fail { color: #c05050; }
+
+/* ── Done state ── */
+
+.conv-summary {
+  font-size: 1.05rem;
+  margin: 0 0 6px;
+}
+.conv-summary.all-ok  { color: #5bba8a; }
+.conv-summary.has-err { color: #c05050; }
+
+.conv-summary-sub {
+  font-size: 0.82rem;
+  color: #555;
+  margin: 0 0 20px;
+}
+
+.conv-errors {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+}
+.conv-errors li {
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  color: #c05050;
+  font-family: monospace;
+  border-bottom: 1px solid #181818;
+}
+.conv-errors li:last-child { border-bottom: none; }
+
+.conv-no-heic {
+  font-size: 0.9rem;
+  color: #555;
+  margin: 0 0 20px;
+}

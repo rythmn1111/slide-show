@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useChannel, type AppMessage } from '@/hooks/useChannel'
+import { convertHeicToBlob } from '@/lib/heic'
 import './App.css'
 
-type MediaFile = { name: string; url: string; type: 'image' | 'video' }
+type MediaFile = { name: string; url: string; type: 'image' | 'video'; file: File }
 type Filter = 'all' | 'photos' | 'videos'
 type Transition = 'fade' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'blur-fade' | 'flip'
 
@@ -22,16 +23,17 @@ function getMediaType(name: string): 'image' | 'video' | null {
   if (VIDEO_EXTS.has(ext)) return 'video'
   return null
 }
+function isHeic(name: string) {
+  return HEIC_EXTS.has(name.split('.').pop()?.toLowerCase() ?? '')
+}
 
-async function toObjectUrl(file: File): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-  if (HEIC_EXTS.has(ext)) {
-    // Dynamic import keeps heic2any out of the main bundle until needed
-    const { default: heic2any } = await import('heic2any')
-    const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
-    return URL.createObjectURL(Array.isArray(blob) ? blob[0]! : blob)
-  }
-  return URL.createObjectURL(file)
+// Returns a blob URL — for HEIC, ensures correct MIME type so Safari/Chrome-macOS can
+// attempt native rendering. No conversion here; conversion happens lazily on onError.
+function toObjectUrl(file: File): string {
+  if (!isHeic(file.name)) return URL.createObjectURL(file)
+  // Some browsers give file.type='' for HEIC — re-wrap with correct MIME type
+  if (file.type === 'image/heic' || file.type === 'image/heif') return URL.createObjectURL(file)
+  return URL.createObjectURL(new File([file], file.name, { type: 'image/heic' }))
 }
 
 // Minimal FS types (avoids missing DOM lib declarations)
@@ -44,8 +46,6 @@ type DirH = AnyHandle & {
 }
 
 // Walk a directory recursively, collecting media in numerically-sorted subfolder order.
-// Uses getDirectoryHandle() to explicitly open each subfolder — more reliable than
-// reusing the handle returned by the parent's values() iterator.
 async function collectMediaFiles(dir: DirH, objectUrls: string[]): Promise<MediaFile[]> {
   const subdirNames: string[] = []
   const localFiles: MediaFile[] = []
@@ -58,10 +58,10 @@ async function collectMediaFiles(dir: DirH, objectUrls: string[]): Promise<Media
       if (!type) continue
       try {
         const file = await (entry as FileH).getFile()
-        const url = await toObjectUrl(file)
+        const url = toObjectUrl(file)
         objectUrls.push(url)
-        localFiles.push({ name: entry.name, url, type })
-      } catch { /* skip locked/unreadable files */ }
+        localFiles.push({ name: entry.name, url, type, file })
+      } catch (err) { console.warn('[slideshow] skipped file:', entry.name, err) }
     }
   }
 
@@ -69,13 +69,11 @@ async function collectMediaFiles(dir: DirH, objectUrls: string[]): Promise<Media
 
   if (subdirNames.length === 0) return localFiles
 
-  // Sort subfolder names numerically so 1, 2, 10 not 1, 10, 2
   subdirNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 
   const result: MediaFile[] = [...localFiles]
   for (const name of subdirNames) {
     try {
-      // Explicitly open the subdirectory by name instead of reusing the iterated handle
       const subDir = await dir.getDirectoryHandle(name)
       const subFiles = await collectMediaFiles(subDir, objectUrls)
       result.push(...subFiles)
@@ -96,12 +94,16 @@ export default function App() {
   const [loadingMsg, setLoadingMsg] = useState('')
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // Lazily-converted HEIC → JPEG blob URLs, keyed by original blob URL
+  const [heicConverted, setHeicConverted] = useState<Record<string, string>>({})
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const objectUrlsRef = useRef<string[]>([])
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const broadcastState = useRef<() => void>(() => {})
+  // Tracks which URLs have an in-flight or completed conversion (prevents double-conversion)
+  const heicPending = useRef<Set<string>>(new Set())
 
   const files = allFiles.filter(f =>
     filter === 'all' ? true : filter === 'photos' ? f.type === 'image' : f.type === 'video'
@@ -145,6 +147,19 @@ export default function App() {
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume
   }, [volume, index])
+
+  // Convert a HEIC file to JPEG and cache the result. Called lazily from <img onError>.
+  const convertHeic = useCallback(async (mf: MediaFile) => {
+    const { url, file } = mf
+    if (heicPending.current.has(url)) return
+    heicPending.current.add(url)
+    try {
+      const blob = await convertHeicToBlob(file, 'image/jpeg')
+      setHeicConverted(prev => ({ ...prev, [url]: URL.createObjectURL(blob) }))
+    } catch (e) {
+      console.warn('[heic] all conversion methods failed for', file.name, (e as Error).message)
+    }
+  }, [])
 
   const goTo = useCallback((i: number) => {
     setTransition(pickTransition())
@@ -226,8 +241,14 @@ export default function App() {
   async function pickFolder() {
     try {
       const dir = await (window as unknown as { showDirectoryPicker(): Promise<DirH> }).showDirectoryPicker()
+      // Revoke old blob URLs including any converted HEIC JPEGs
       objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
       objectUrlsRef.current = []
+      setHeicConverted(prev => {
+        Object.values(prev).forEach(url => URL.revokeObjectURL(url))
+        return {}
+      })
+      heicPending.current.clear()
       setAllFiles([])
       setLoadingMsg('Loading…')
       const mediaFiles = await collectMediaFiles(dir, objectUrlsRef.current)
@@ -256,15 +277,23 @@ export default function App() {
     )
   }
 
+  // For HEIC images: use converted JPEG if available, otherwise use raw HEIC blob URL
+  const imgSrc = current?.type === 'image'
+    ? (heicConverted[current.url] ?? current.url)
+    : undefined
+
   return (
     <div className={`app${overlayVisible ? '' : ' idle'}`}>
       <div className="media-area" onClick={() => setPlaying(p => !p)}>
         {current?.type === 'image' && (
           <img
             key={current.url}
-            src={current.url}
+            src={imgSrc}
             alt={current.name}
             className={`media-item t-${transition}`}
+            onError={() => {
+              if (isHeic(current.name)) convertHeic(current)
+            }}
           />
         )}
         {current?.type === 'video' && (
@@ -277,7 +306,7 @@ export default function App() {
             onEnded={() => { if (playing) next() }}
           />
         )}
-        {!playing && (
+        {!playing && current?.type === 'video' && (
           <div className="pause-overlay"><span>▶</span></div>
         )}
         <div className="counter">{files.length > 0 ? `${index + 1} / ${files.length}` : '0 / 0'}</div>

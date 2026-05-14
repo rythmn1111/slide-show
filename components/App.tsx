@@ -29,14 +29,15 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(3)
   const [volume, setVolume] = useState(1)
-  const [folderName, setFolderName] = useState('')
   const [transition, setTransition] = useState<Transition>('fade')
   const [remoteUrl, setRemoteUrl] = useState('/remote')
+  const [overlayVisible, setOverlayVisible] = useState(true)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const objectUrlsRef = useRef<string[]>([])
-
-  // Ref always holds a closure over the latest state so any caller can broadcast it
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const broadcastState = useRef<() => void>(() => {})
 
   const files = allFiles.filter(f =>
@@ -45,6 +46,38 @@ export default function App() {
   const current = files[index]
 
   useEffect(() => { setRemoteUrl(`${location.protocol}//${location.host}/remote`) }, [])
+
+  // Auto-hide overlay after 3s of inactivity
+  useEffect(() => {
+    function showOverlay() {
+      setOverlayVisible(true)
+      if (idleTimer.current) clearTimeout(idleTimer.current)
+      idleTimer.current = setTimeout(() => setOverlayVisible(false), 3000)
+    }
+    window.addEventListener('mousemove', showOverlay)
+    window.addEventListener('touchstart', showOverlay)
+    showOverlay()
+    return () => {
+      window.removeEventListener('mousemove', showOverlay)
+      window.removeEventListener('touchstart', showOverlay)
+      if (idleTimer.current) clearTimeout(idleTimer.current)
+    }
+  }, [])
+
+  // Track fullscreen state
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
+  }
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume
@@ -66,7 +99,6 @@ export default function App() {
   }, [files.length])
 
   const send = useChannel(useCallback((msg: AppMessage) => {
-    // Remote requests a state snapshot (e.g. on first open)
     if (msg.type === 'request-state') { broadcastState.current(); return }
     if (msg.type !== 'command') return
     if (msg.action === 'next') next()
@@ -78,7 +110,6 @@ export default function App() {
     else if (msg.action === 'speed') setSpeed(msg.value)
   }, [next, prev]))
 
-  // Keep broadcastState closure fresh every render
   broadcastState.current = () => send({
     type: 'state',
     playing, index,
@@ -87,20 +118,17 @@ export default function App() {
     volume, filter, speed,
   })
 
-  // Broadcast whenever anything meaningful changes
   useEffect(() => {
     broadcastState.current()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, index, volume, filter, speed, files.length])
 
-  // Auto-advance timer (images)
   useEffect(() => {
     if (!playing || files.length === 0 || current?.type === 'video') return
     timerRef.current = setTimeout(() => next(), speed * 1000)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [playing, index, speed, files.length, current?.type, next])
 
-  // Auto-play video
   useEffect(() => {
     if (current?.type === 'video' && videoRef.current) {
       videoRef.current.volume = volume
@@ -108,20 +136,19 @@ export default function App() {
     }
   }, [index, current?.type]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pause/resume video
   useEffect(() => {
     if (current?.type !== 'video' || !videoRef.current) return
     if (playing) videoRef.current.play().catch(() => {})
     else videoRef.current.pause()
   }, [playing, current?.type])
 
-  // Keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') next()
       else if (e.key === 'ArrowLeft') prev()
       else if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p) }
       else if (e.key === 'Escape') setPlaying(false)
+      else if (e.key === 'f' || e.key === 'F') toggleFullscreen()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -136,7 +163,6 @@ export default function App() {
   async function pickFolder() {
     try {
       const dir = await (window as unknown as { showDirectoryPicker(): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker()
-      setFolderName(dir.name)
       objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
       objectUrlsRef.current = []
       const mediaFiles: MediaFile[] = []
@@ -167,10 +193,7 @@ export default function App() {
           <p>Select a folder with photos and videos</p>
           <button className="pick-btn" onClick={pickFolder}>Choose Folder</button>
           <p className="remote-hint">
-            Open remote: <code>{remoteUrl}</code>
-          </p>
-          <p className="remote-hint" style={{ marginTop: 0 }}>
-            (in a second tab or on your phone)
+            Open remote in another tab: <code>{remoteUrl}</code>
           </p>
         </div>
       </div>
@@ -178,7 +201,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app${overlayVisible ? '' : ' idle'}`}>
       <div className="media-area" onClick={() => setPlaying(p => !p)}>
         {current?.type === 'image' && (
           <img
@@ -205,48 +228,26 @@ export default function App() {
         <div className="counter">{files.length > 0 ? `${index + 1} / ${files.length}` : '0 / 0'}</div>
       </div>
 
-      <div className="controls">
-        <button className="ctrl-btn folder-btn" onClick={pickFolder}>⊞ Folder</button>
-
-        <div className="filter-group">
-          {(['all', 'photos', 'videos'] as Filter[]).map(f => (
-            <button
-              key={f}
-              className={`ctrl-btn filter-btn${filter === f ? ' active' : ''}`}
-              onClick={() => setFilter(f)}
-            >
-              {f === 'all' ? 'All' : f === 'photos' ? '🖼 Photos' : '🎬 Videos'}
-            </button>
-          ))}
-        </div>
-
-        <div className="nav-group">
-          <button className="ctrl-btn nav-arrow" onClick={prev}>‹</button>
-          <button
-            className={`ctrl-btn play-btn${playing ? ' active' : ''}`}
-            onClick={() => setPlaying(p => !p)}
-          >
-            {playing ? '⏸' : '▶'}
-          </button>
-          <button className="ctrl-btn nav-arrow" onClick={next}>›</button>
-        </div>
-
-        <div className="slider-group">
-          <label>Speed</label>
-          <input type="range" min={1} max={15} step={0.5} value={speed}
-            onChange={e => setSpeed(Number(e.target.value))} />
-          <span className="slider-val">{speed}s</span>
-        </div>
-
-        <div className="slider-group">
-          <label>Vol</label>
-          <input type="range" min={0} max={1} step={0.05} value={volume}
-            onChange={e => setVolume(Number(e.target.value))} />
-          <span className="slider-val">{Math.round(volume * 100)}%</span>
-        </div>
-
-        <div className="folder-info">{folderName}</div>
-        <div className="transition-badge">✦ {transition}</div>
+      {/* Floating overlay — auto-hides after 3s idle */}
+      <div className="float-toolbar">
+        <button className="float-btn" onClick={pickFolder} title="Change folder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
+        <button className="float-btn" onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}>
+          {isFullscreen ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/>
+              <path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+              <path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+            </svg>
+          )}
+        </button>
       </div>
     </div>
   )

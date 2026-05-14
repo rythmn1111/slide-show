@@ -22,6 +22,47 @@ function getMediaType(name: string): 'image' | 'video' | null {
   return null
 }
 
+// Minimal FS types (avoids missing DOM lib declarations)
+type FSHandle = { kind: 'file' | 'directory'; name: string }
+type FSFileHandle = FSHandle & { kind: 'file'; getFile(): Promise<File> }
+type FSDirHandle = FSHandle & { kind: 'directory'; values(): AsyncIterableIterator<FSHandle> }
+
+// Walk a directory recursively:
+// - If it contains subfolders, collect files from each subfolder in numeric order
+// - If no subfolders, collect files directly (sorted numerically by name)
+// Root-level files (if any) are included before subfolder files.
+async function collectMediaFiles(dir: FSDirHandle, objectUrls: string[]): Promise<MediaFile[]> {
+  const subdirs: FSDirHandle[] = []
+  const localFiles: MediaFile[] = []
+
+  for await (const entry of dir.values()) {
+    if (entry.kind === 'directory') {
+      subdirs.push(entry as FSDirHandle)
+    } else {
+      const type = getMediaType(entry.name)
+      if (!type) continue
+      const file = await (entry as FSFileHandle).getFile()
+      const url = URL.createObjectURL(file)
+      objectUrls.push(url)
+      localFiles.push({ name: entry.name, url, type })
+    }
+  }
+
+  localFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+
+  if (subdirs.length === 0) return localFiles
+
+  // Sort subfolders numerically (1, 2, 10 not 1, 10, 2)
+  subdirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+
+  const result: MediaFile[] = [...localFiles]
+  for (const sub of subdirs) {
+    const subFiles = await collectMediaFiles(sub, objectUrls)
+    result.push(...subFiles)
+  }
+  return result
+}
+
 export default function App() {
   const [allFiles, setAllFiles] = useState<MediaFile[]>([])
   const [filter, setFilter] = useState<Filter>('all')
@@ -162,21 +203,10 @@ export default function App() {
 
   async function pickFolder() {
     try {
-      const dir = await (window as unknown as { showDirectoryPicker(): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker()
+      const dir = await (window as unknown as { showDirectoryPicker(): Promise<FSDirHandle> }).showDirectoryPicker()
       objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
       objectUrlsRef.current = []
-      const mediaFiles: MediaFile[] = []
-      type FSDir = { values(): AsyncIterableIterator<FileSystemHandle> }
-      for await (const entry of (dir as unknown as FSDir).values()) {
-        if (entry.kind !== 'file') continue
-        const type = getMediaType(entry.name)
-        if (!type) continue
-        const file = await (entry as FileSystemFileHandle).getFile()
-        const url = URL.createObjectURL(file)
-        objectUrlsRef.current.push(url)
-        mediaFiles.push({ name: entry.name, url, type })
-      }
-      mediaFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      const mediaFiles = await collectMediaFiles(dir, objectUrlsRef.current)
       setAllFiles(mediaFiles)
       setIndex(0)
       setPlaying(false)
